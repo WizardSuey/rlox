@@ -90,7 +90,7 @@ class Scanner
             when "\t" then # ignore
             when "\n" then @line += 1
             when '"' then self.string()
-            when "o" then add_token(match('r') ? TokenType::OR : TokenType::IDENTIFIER)
+            when "o" then addToken(match('r') ? TokenType::OR : TokenType::IDENTIFIER)
             else 
                 if self.isDigit(char)
                     self.number()
