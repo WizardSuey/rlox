@@ -3,18 +3,28 @@ require_relative 'Token.rb'
 require_relative 'scanner.rb'
 require_relative 'parser.rb'
 require_relative 'AstPrinter.rb'
+require_relative 'Interpreter.rb'
+require_relative 'RunTimeError.rb'
+
 
 class Lox
     @@hadError = false
+    @@hadRuntimeError = false
+    @@Interpreter = Interpreter.new(self)
+
+    def self.Interpreter
+        return @@Interpreter
+    end
+
+    private_class_method :Interpreter
 
     def runFile(path)
         """
         Запускает интерпретатор в цикле, 
         постоянно запрашивая у пользователя ввод данных пока не будет введена пустая строка.
         """
-        if @@hadError
-            return
-        end
+        if @@hadError then exit(65) end
+        if @@hadRuntimeError then exit(70) end
 
         begin
             if File.extname(path) == ".lox"
@@ -62,6 +72,12 @@ class Lox
         end
     end
 
+    def self.runtimeError(error)
+        # Обрабатывает ошибку во время выполнения, печатая сообщение об ошибке вместе с номером строки, в которой произошла ошибка.
+        $stdout << "#{error.message}\n[line #{error.token.line}]" << "\n"
+        @@hadRuntimeError = true
+    end
+
     private
 
     def run(source)
@@ -69,9 +85,9 @@ class Lox
         scanner = Scanner.new(source, lox=self)
         tokens = scanner.scanTokens()
 
-        tokens.each do |token|
-            $stdout << "#{token.toString()}\n"
-        end
+        # tokens.each do |token|
+        #     $stdout << "#{token.toString()}\n"
+        # end
 
         parser = Parser.new(tokens, lox=self)
         expression = parser.parse()
@@ -79,7 +95,7 @@ class Lox
         # Остановиться, если произошла синтаксическая ошибка
         if @@hadError then return end
         
-        $stdout << AstPrinter.new().print(expression)
+        @@Interpreter.interpret(expression)
     end
 
     def report(line_index, where, message)

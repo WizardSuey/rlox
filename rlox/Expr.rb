@@ -1,3 +1,5 @@
+""" Грамматика выражений. """
+
 class Expr
     class Visitor
         def visitBinaryExpr(expr) end

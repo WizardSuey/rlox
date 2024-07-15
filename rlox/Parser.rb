@@ -48,7 +48,7 @@ class Parser
         # Правило сравнения
         expr = self.term()
 
-        while match(TokenType::GREATER, TokenType::GREATER_EQUAL, TokenType::LESS, TokenType::LESS_EQUAL) do
+        while self.match(TokenType::GREATER, TokenType::GREATER_EQUAL, TokenType::LESS, TokenType::LESS_EQUAL) do
             operator = self.previous()
             right = self.term()
             expr = Expr::Binary.new(expr, operator, right)
@@ -61,7 +61,7 @@ class Parser
         # Правило сложения и вычитания
         expr = self.factor()
 
-        while match(TokenType::MINUS, TokenType::PLUS) do
+        while self.match(TokenType::MINUS, TokenType::PLUS) do
             operator = self.previous()
             right = self.factor()
             expr = Expr::Binary.new(expr, operator, right)
@@ -74,7 +74,7 @@ class Parser
         # Правило умножения и деления
         expr = self.unary()
 
-        while match(TokenType::SLASH, TokenType::STAR) do
+        while self.match(TokenType::SLASH, TokenType::STAR) do
             operator = self.previous()
             right = self.unary()
             expr = Expr::Binary.new(expr, operator, right)
@@ -85,7 +85,7 @@ class Parser
 
     def unary()
         # Правило унарной операции
-        if match(TokenType::BANG, TokenType::MINUS) then
+        if self.match(TokenType::BANG, TokenType::MINUS) then
             operator = self.previous()
             right = self.unary()
             return Expr::Unary.new(operator, right)
@@ -96,21 +96,21 @@ class Parser
 
     def primary()
         # Правило первичных выражений
-        if match(TokenType::FALSE) then return Expr::Literal.new(false) end
-        if match(TokenType::TRUE) then return Expr::Literal.new(true) end
-        if match(TokenType::NIL) then return Expr::Literal.new(nil) end
+        if self.match(TokenType::FALSE) then return Expr::Literal.new(false) end
+        if self.match(TokenType::TRUE) then return Expr::Literal.new(true) end
+        if self.match(TokenType::NIL) then return Expr::Literal.new(nil) end
 
-        if match(TokenType::NUMBER, TokenType::STRING) then
+        if self.match(TokenType::NUMBER, TokenType::STRING) then
             return Expr::Literal.new(self.previous().literal)
         end
 
-        if match(TokenType::LEFT_PAREN) then
+        if self.match(TokenType::LEFT_PAREN) then
             expr = self.expression()
             self.consume(TokenType::RIGHT_PAREN, "Expect ')' after expression.")
             return Expr::Grouping.new(expr)
         end
 
-        raise error(self.peek(), "Expect expression.")
+        raise self.error(self.peek(), "Expect expression.")
     end
 
     
@@ -147,7 +147,7 @@ class Parser
 
     def advance()
         # потребляет текущий токен и возвращает его
-        if isAtEnd?() then return self.previous() end
+        if self.isAtEnd?() then return self.previous() end
         @@current += 1
         return @tokens[@@current - 1]
     end
