@@ -2,6 +2,7 @@ require_relative 'Expr.rb'
 require_relative 'Stmt.rb'
 require_relative 'TokenType.rb'
 require_relative 'RunTimeError.rb'
+require_relative 'Environment.rb'
 
 
 # Класс интерпретатора. Он реализует интерфейс Visitor, который определяет методы
@@ -9,6 +10,14 @@ require_relative 'RunTimeError.rb'
 class Interpreter
     include Stmt
     include Expr
+
+    @@Environment = Environment.new()
+
+    def self.Environment
+        return @@Environment
+    end
+
+    private_class_method :Environment
 
     # Инициализация интерпретатора. 
     # Аргумент lox - объект класса Lox, который содержит метод для обработки ошибок.
@@ -41,28 +50,13 @@ class Interpreter
         end
     end
 
-    # Метод visitLiteralExpr принимает объект класса Expr::Literal и возвращает его значение.
-    def visitLiteralExpr(expr)
-        return expr.value;
-    end
-
-    # Метод visitGroupingExpr принимает объект класса Expr::Grouping и вызывает evaluate для его выражения.
-    def visitGroupingExpr(expr)
-        return self.evaluate(expr.expression)
-    end
-
-    # Метод visitUnaryExpr принимает объект класса Expr::Unary и выполняет его.
-    def visitUnaryExpr(expr)
-        right = self.evaluate(expr.right)
-
-        case expr.operator.type
-            when TokenType::MINUS then 
-                self.checkNumberOperand(expr.operator, right)
-                return -(right.to_f)
-            when TokenType::BANG then return !self.isTruthy(right)
-        end
-
-        return nil
+     # Метод visitAssignExpr принимает объект класса Expr::Assign и выполняет его, присваивая значение переменной.
+     def visitAssignExpr(expr) 
+        # Вычисление значения выражения
+        value = self.evaluate(expr.value)
+        # Присвоение значения переменной
+        @@Environment.assign(expr.name, value)
+        return value
     end
 
     # Метод visitBinaryExpr принимает объект класса Expr::Binary и выполняет его.
@@ -101,15 +95,90 @@ class Interpreter
         end
     end
 
+    # Метод visitGroupingExpr принимает объект класса Expr::Grouping и вызывает evaluate для его выражения.
+    def visitGroupingExpr(expr)
+        return self.evaluate(expr.expression)
+    end
+
+    # Метод visitLiteralExpr принимает объект класса Expr::Literal и возвращает его значение.
+    def visitLiteralExpr(expr)
+        return expr.value;
+    end
+
+    # Метод visitUnaryExpr принимает объект класса Expr::Unary и выполняет его.
+    def visitUnaryExpr(expr)
+        right = self.evaluate(expr.right)
+
+        case expr.operator.type
+            when TokenType::MINUS then 
+                self.checkNumberOperand(expr.operator, right)
+                return -(right.to_f)
+            when TokenType::BANG then return !self.isTruthy(right)
+        end
+
+        return nil
+    end
+
+    def visitVariableExpr(expr)
+        return @@Environment.get(expr.name)
+    end
+
+# Метод visitExpressionStmt принимает объект класса Stmt::Expression и выполняет его выражение.
     def visitExpressionStmt(stmt)
+        # Выполнение выражения
         self.evaluate(stmt.expression)
         return nil
     end
 
+    # Метод visitBlockStmt принимает объект класса Stmt::Block и выполняет его, создавая
+    # новую среду исполнения, в которой выполняются выражения блока.
+    def visitBlockStmt(stmt)
+        # Создание новой среды исполнения, в которой выполняются выражения блока.
+        # Область видимости новой среды исполнения - текущая среда исполнения.
+        # Это означает, что внутри блока можно обращаться к переменным текущей среды исполнения.
+        newEnv = Environment.new(@@Environment)
+        
+        # Выполнение выражений блока в новой среде исполнения
+        self.executeBlock(stmt.statements, newEnv)
+        
+        # Возврат nil, так как блок не возвращает значение
+        return nil
+    end
+
+    # Метод visitPrintStmt принимает объект класса Stmt::Print и выполняет его, выводя результат на стандартный вывод.
     def visitPrintStmt(stmt)
+        # Вычисление значения выражения
         value = self.evaluate(stmt.expression)
+        # Печать значения на стандартный вывод
         $stdout << self.stringify(value) << "\n"
         return nil
+    end
+
+    # Метод visitVarStmt принимает объект класса Stmt::Var и выполняет его, определяя переменную в среде исполнения.
+    def visitVarStmt(stmt)
+        # Инициализация значения переменной
+        value = nil
+        if stmt.initializer != nil then
+            value = self.evaluate(stmt.initializer)
+        end
+
+        # Определение переменной в текущей среде исполнения
+        @@Environment.define(stmt.name.lexeme, value)
+        return nil
+    end
+
+    # выполняет список операторов в контексте заданной среды
+    def executeBlock(statements, environment)
+        previous = @@Environment
+        begin
+            @@Environment = environment
+
+            statements.each do |statement|
+                self.execute(statement)
+            end    
+        ensure
+            @@Environment = previous
+        end
     end
 
     private
@@ -164,6 +233,7 @@ class Interpreter
         raise RunTimeError.new(operator, "Operand must be a number.")
     end
 end
+
 
 
 

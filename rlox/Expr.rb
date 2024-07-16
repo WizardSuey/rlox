@@ -1,10 +1,26 @@
 module Expr
     class Visitor
+        def visitAssignExpr(expr) end
         def visitBinaryExpr(expr) end
         def visitGroupingExpr(expr) end
         def visitLiteralExpr(expr) end
         def visitUnaryExpr(expr) end
+        def visitVariableExpr(expr) end
     end
+  class Assign
+     include Expr
+
+     attr_reader :name, :value
+
+    def initialize(name, value)
+      @name = name
+      @value = value
+    end
+
+    def accept(visitor)
+      visitor.visitAssignExpr(self)
+    end
+  end
   class Binary
      include Expr
 
@@ -58,6 +74,19 @@ module Expr
 
     def accept(visitor)
       visitor.visitUnaryExpr(self)
+    end
+  end
+  class Variable
+     include Expr
+
+     attr_reader :name
+
+    def initialize(name)
+      @name = name
+    end
+
+    def accept(visitor)
+      visitor.visitVariableExpr(self)
     end
   end
 end

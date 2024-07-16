@@ -138,7 +138,7 @@ class Scanner
         # типа `TOKENS[:string]` со значением отсканированной строки в списке токенов.
 
         while self.peek() != '"' && !self.isAtEnd?()
-            if self.peek() == "\n" then @line += 1 end
+            # if self.peek() == "\n" then @line += 1 end
             self.advance()
         end
 
@@ -203,6 +203,7 @@ class Scanner
         return c >= '0' && c <= '9'
     end
 end
+
 
 
 

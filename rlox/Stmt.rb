@@ -1,8 +1,23 @@
 module Stmt
     class Visitor
+        def visitBlockStmt(stmt) end
         def visitExpressionStmt(stmt) end
         def visitPrintStmt(stmt) end
+        def visitVarStmt(stmt) end
     end
+  class Block
+     include Stmt
+
+     attr_reader :statements
+
+    def initialize(statements)
+      @statements = statements
+    end
+
+    def accept(visitor)
+      visitor.visitBlockStmt(self)
+    end
+  end
   class Expression
      include Stmt
 
@@ -29,5 +44,18 @@ module Stmt
       visitor.visitPrintStmt(self)
     end
   end
-end
+  class Var
+     include Stmt
 
+     attr_reader :name, :initializer
+
+    def initialize(name, initializer)
+      @name = name
+      @initializer = initializer
+    end
+
+    def accept(visitor)
+      visitor.visitVarStmt(self)
+    end
+  end
+end

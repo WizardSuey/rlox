@@ -1,4 +1,4 @@
-class RunTimeError < StandardError
+class RunTimeError < RuntimeError
     attr_reader :token
 
     def initialize(token, message)

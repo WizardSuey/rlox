@@ -1,3 +1,5 @@
+# Это модуль парсит язык программирования RLOX.
+# Он определяет класс Parser, который отвечает за парсинг выражений.
 require_relative 'TokenType.rb'
 require_relative 'Token.rb'
 require_relative 'Expr.rb'
@@ -5,55 +7,140 @@ require_relative 'Stmt.rb'
 
 
 class Parser
+    # Этот класс представляет ошибку при парсинге.
     class ParseError < RuntimeError
-
     end 
 
+    # Токены, которые нужно парсить.
     attr_reader :tokens
 
+    # Текущий индекс токена.
     @@current = 0
 
+    # Инициализирует Parser с заданными токенами и Lox-экземпляром.
     def initialize(tokens, lox)
         @tokens = tokens
         @lox = lox
     end
 
+    # Парсит токены и возвращает список выражений.
     def parse()
-        # Парсер выражений
+        # Парсер для выражений.
         statements = Array.new()
+        # Парсим каждый токен до тех пор, пока не достигнем конца.
         while !self.isAtEnd?() do
-            statements << self.statement()
+            statements << self.declaration()
         end
         return statements
     end
 
     private 
 
-    def expression()
-        # Правила выражений
-        return self.equality()
+    # Парсит выражение.
+     def expression()
+        return self.assignment()
     end
 
+    def declaration()
+        begin
+            if self.match(TokenType::VAR) then return self.varDeclaration() end
+            return self.statement()
+        rescue ParseError => error
+            self.synchronize()
+            return nil
+        end
+    end
+
+    # Парсит выражение.
     def statement()
         if self.match(TokenType::PRINT) then return self.printStatement() end
+        if self.match(TokenType::LEFT_BRACE) then return Stmt::Block.new(self.block()) end
 
         return self.expressionStatement()
     end
 
+    # Парсит выражение для печати.
     def printStatement()
         value = self.expression()
-        self.consume(TokenType::SEMICOLON, "Expect ';' after value.")
+        self.consume(TokenType::SEMICOLON, "Expect ';' after variable value.")
         return Stmt::Print.new(value)
     end
 
+     # Парсит объявление переменной.
+    def varDeclaration()
+        name = self.consume(TokenType::IDENTIFIER, "Expect variable name.")
+
+        initializer = nil
+        if self.match(TokenType::EQUAL) then
+            initializer = self.expression()
+        end
+
+        self.consume(TokenType::SEMICOLON, "Expect ';' after variable declaration.")
+        return Stmt::Var.new(name, initializer)
+    end
+
+    # Парсит выражение для выражения.
     def expressionStatement()
         expr = self.expression()
-        self.consume(TokenType::SEMICOLON, "Expect ';' after expression.")
+        self.consume(TokenType::SEMICOLON,"Expect ';' after variable declaration.")
         return Stmt::Expression.new(expr)
     end
 
+    def block()
+        statements = Array.new()
+
+        while !self.check(TokenType::RIGHT_BRACE) && !self.isAtEnd?() do
+            statements << self.declaration()
+        end
+
+        self.consume(TokenType::RIGHT_BRACE, "Expect '}' after block.")
+        return statements
+    end
+
+    # Парсит выражение присваивания.
+    # 
+    # В данном методе происходит парсинг выражения равенства, а затем проверяется
+    # наличие оператора присваивания (=). Если оператор присваивания присутствует,
+    # то происходит парсинг нового выражения присваивания, а затем проверяется,
+    # является ли исходное выражение переменной. Если это так, то создается новое выражение
+    # присваивания и возвращается из метода.
+    # 
+    # Если исходное выражение не является переменной, то вызывается метод error и генерируется
+    # исключение ParseError.
+    # 
+    # Возвращается исходное выражение или новое выражение присваивания.
+    def assignment()
+        # Парсинг выражения равенства.
+        expr = self.equality()
+
+        # Проверка наличия оператора присваивания (=).
+        if self.match(TokenType::EQUAL) then
+            # Потребление текущего токена.
+            equals = self.previous()
+
+            # Парсинг нового выражения присваивания.
+            value = self.assignment()
+
+            # Проверка, является ли исходное выражение переменной.
+            if (expr.is_a?(Expr::Variable)) then 
+                # Получение имени переменной.
+                name = expr.name
+
+                # Создание нового выражения присваивания.
+                return Expr::Assign.new(name, value)
+            end
+
+            # Если исходное выражение не является переменной, вызывается метод error
+            # и генерируется исключение ParseError.
+            self.error(equals, "Invalid assignment target.")
+        end
+
+        # Возвращается исходное выражение или новое выражение присваивания.
+        return expr
+    end
+
+    # Парсит выражение равенства.
     def equality()
-        # Правило равенства
         expr = self.comparison()
 
         while self.match(TokenType::BANG_EQUAL, TokenType::EQUAL_EQUAL) do
@@ -65,8 +152,8 @@ class Parser
         return expr
     end
 
+    # Парсит выражение сравнения.
     def comparison()
-        # Правило сравнения
         expr = self.term()
 
         while self.match(TokenType::GREATER, TokenType::GREATER_EQUAL, TokenType::LESS, TokenType::LESS_EQUAL) do
@@ -78,8 +165,8 @@ class Parser
         return expr
     end
 
+    # Парсит выражения Сложения и Вычитания.
     def term()
-        # Правило сложения и вычитания
         expr = self.factor()
 
         while self.match(TokenType::MINUS, TokenType::PLUS) do
@@ -91,8 +178,8 @@ class Parser
         return expr
     end
 
+    # Парсит выражения Умножения и Деления.
     def factor()
-        # Правило умножения и деления
         expr = self.unary()
 
         while self.match(TokenType::SLASH, TokenType::STAR) do
@@ -104,8 +191,8 @@ class Parser
         return expr
     end
 
+    # Парсит унарное выражение.
     def unary()
-        # Правило унарной операции
         if self.match(TokenType::BANG, TokenType::MINUS) then
             operator = self.previous()
             right = self.unary()
@@ -115,14 +202,18 @@ class Parser
         return self.primary()
     end
 
+    # Парсит первичное выражение.
     def primary()
-        # Правило первичных выражений
         if self.match(TokenType::FALSE) then return Expr::Literal.new(false) end
         if self.match(TokenType::TRUE) then return Expr::Literal.new(true) end
         if self.match(TokenType::NIL) then return Expr::Literal.new(nil) end
 
         if self.match(TokenType::NUMBER, TokenType::STRING) then
             return Expr::Literal.new(self.previous().literal)
+        end
+
+        if self.match(TokenType::IDENTIFIER) then
+            return Expr::Variable.new(self.previous())
         end
 
         if self.match(TokenType::LEFT_PAREN) then
@@ -133,13 +224,10 @@ class Parser
 
         raise self.error(self.peek(), "Expect expression.")
     end
-
     
 
+    # Проверяет, имеет ли текущий токен любой из заданных типов и потребляет его, если да.
     def match(*types)
-        # проверяет, имеет ли текущий токен какой-либо из заданных типов
-        # Если да, он потребляет токен и возвращает true. 
-        # В противном случае он возвращает false и оставляет текущий токен в покое.
         types.each do |type|
             if self.check(type) then 
                 self.advance()
@@ -150,52 +238,53 @@ class Parser
         return false
     end
 
+    # Потребляет текущий токен, если он имеет заданный тип.
+    # Если он не имеет заданный тип, вызывает ошибку.
     def consume(type, message)
-        # Проверяет, соответствует ли следующий токен ожидаемому типу. 
-        # Если да, то он потребляет токен, и все в порядке. 
-        # Если там есть какой-то другой токен, значит, мы столкнулись с ошибкой.
         if self.check(type) then return self.advance() end
 
         raise self.error(peek(), message)
     end
 
+    # Проверяет, имеет ли текущий токен заданный тип.
+    # Если он имеет заданный тип, возвращает true.
+    # Если он не имеет заданный тип, возвращает false.
     def check(type)
-        #  возвращает true, если текущий токен имеет заданный тип
         if (self.isAtEnd?()) then return false end
         return self.peek().type == type
-    end
+    end   
     
 
+    # Потребляет текущий токен и возвращает его.
     def advance()
-        # потребляет текущий токен и возвращает его
         if self.isAtEnd?() then return self.previous() end
         @@current += 1
         return @tokens[@@current - 1]
     end
 
+    # Проверяет, достигли ли мы конца токенов.
     def isAtEnd?()
-        # проверяет, закончились ли у нас токены для анализа.
         return self.peek().type == TokenType::EOF
     end
 
+    # Возвращает текущий токен.
     def peek()
-        # возвращает текущий токен, который нам еще предстоит использовать
         return @tokens[@@current]
     end
 
+    # Возвращает предыдущий токен.
     def previous()
-        # возвращает последний использованный токен
         return @tokens[@@current - 1]
     end
 
+    # Создает ошибку ParseError и вызывает ее.
     def error(token, message)
         @lox.error(token, message)
         return Parser::ParseError.new()
     end
 
+    # Синхронизирует парсер после ошибки.
     def synchronize()
-        # Он отбрасывает токены до тех пор, пока не решит, что нашел границу оператора. 
-        # После обнаружения ошибки ParseError мы вызовем это и затем, будем надеяться, снова синхронизируемся
         self.advance()
 
         while !self.isAtEnd?() do 
@@ -209,9 +298,4 @@ class Parser
         end
     end
 end
-
-
-
-
-
 
