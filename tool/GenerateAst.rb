@@ -14,6 +14,11 @@ def main(*args)
         "Literal  : Object value",  
         "Unary    : Token operator, Expr right"
     ])
+
+    defineAst(outputDir, "Stmt", [
+        "Expression : Expr expression",
+        "Print      : Expr expression"
+    ])
 end
 
 
@@ -23,7 +28,7 @@ def defineAst(outputDir, baseName, types)
     path = "#{outputDir}/#{baseName}.rb"
     writer = File.open(path, "w")
 
-    writer << "class #{baseName}\n"
+    writer << "module #{baseName}\n"
 
     defineVisitor(writer, baseName, types)
 
@@ -40,7 +45,8 @@ private :defineAst
 
 def defineType(writer, baseName, className, fieldList)
     """ Создает определение класса для типа в абстрактном синтаксическом дереве (AST) """
-    writer << "  class #{className} < #{baseName}\n"
+    writer << "  class #{className}\n"
+    writer << "     include #{baseName}\n\n"
 
     fields = fieldList.split(", ")  # список полей
     i = 0   # вспомогательный счётчик
@@ -106,3 +112,4 @@ end
 private :defineVisitor
 
 main("rlox")
+

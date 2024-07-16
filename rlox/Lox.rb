@@ -90,12 +90,12 @@ class Lox
         # end
 
         parser = Parser.new(tokens, lox=self)
-        expression = parser.parse()
+        statements = parser.parse()
 
         # Остановиться, если произошла синтаксическая ошибка
         if @@hadError then return end
         
-        @@Interpreter.interpret(expression)
+        @@Interpreter.interpret(statements)
     end
 
     def report(line_index, where, message)

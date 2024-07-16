@@ -1,6 +1,8 @@
 require_relative 'TokenType.rb'
 require_relative 'Token.rb'
 require_relative 'Expr.rb'
+require_relative 'Stmt.rb'
+
 
 class Parser
     class ParseError < RuntimeError
@@ -18,19 +20,38 @@ class Parser
 
     def parse()
         # Парсер выражений
-        begin
-            return self.expression()
-        rescue ParseError => error
-            return nil
+        statements = Array.new()
+        while !self.isAtEnd?() do
+            statements << self.statement()
         end
+        return statements
     end
 
     private 
+
     def expression()
         # Правила выражений
         return self.equality()
     end
-    
+
+    def statement()
+        if self.match(TokenType::PRINT) then return self.printStatement() end
+
+        return self.expressionStatement()
+    end
+
+    def printStatement()
+        value = self.expression()
+        self.consume(TokenType::SEMICOLON, "Expect ';' after value.")
+        return Stmt::Print.new(value)
+    end
+
+    def expressionStatement()
+        expr = self.expression()
+        self.consume(TokenType::SEMICOLON, "Expect ';' after expression.")
+        return Stmt::Expression.new(expr)
+    end
+
     def equality()
         # Правило равенства
         expr = self.comparison()

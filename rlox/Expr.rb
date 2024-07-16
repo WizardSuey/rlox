@@ -1,13 +1,13 @@
-""" Грамматика выражений. """
-
-class Expr
+module Expr
     class Visitor
         def visitBinaryExpr(expr) end
         def visitGroupingExpr(expr) end
         def visitLiteralExpr(expr) end
         def visitUnaryExpr(expr) end
     end
-  class Binary < Expr
+  class Binary
+     include Expr
+
      attr_reader :left, :operator, :right
 
     def initialize(left, operator, right)
@@ -20,7 +20,9 @@ class Expr
       visitor.visitBinaryExpr(self)
     end
   end
-  class Grouping < Expr
+  class Grouping
+     include Expr
+
      attr_reader :expression
 
     def initialize(expression)
@@ -31,7 +33,9 @@ class Expr
       visitor.visitGroupingExpr(self)
     end
   end
-  class Literal < Expr
+  class Literal
+     include Expr
+
      attr_reader :value
 
     def initialize(value)
@@ -42,7 +46,9 @@ class Expr
       visitor.visitLiteralExpr(self)
     end
   end
-  class Unary < Expr
+  class Unary
+     include Expr
+
      attr_reader :operator, :right
 
     def initialize(operator, right)

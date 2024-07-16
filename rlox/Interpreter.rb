@@ -1,11 +1,14 @@
 require_relative 'Expr.rb'
+require_relative 'Stmt.rb'
 require_relative 'TokenType.rb'
 require_relative 'RunTimeError.rb'
 
 
 # Класс интерпретатора. Он реализует интерфейс Visitor, который определяет методы
 # для посещения различных типов выражений.
-class Interpreter < Expr::Visitor
+class Interpreter
+    include Stmt
+    include Expr
 
     # Инициализация интерпретатора. 
     # Аргумент lox - объект класса Lox, который содержит метод для обработки ошибок.
@@ -13,15 +16,27 @@ class Interpreter < Expr::Visitor
         @lox = lox
     end
 
-    # Исполнение выражения. 
-    # Аргумент expression - объект класса Expr, представляющий выражение.
-    # Метод evaluate вызывает visit для выражения и возвращает результат.
-    # Если во время выполнения выражения возникает ошибка, метод RunTimeError класса Lox вызывается.
-    def interpret(expression)
+    # Метод interpret выполняет интерпретацию выражения.
+    # 
+    # Аргумент statements - массив объектов класса Stmt, представляющих
+    # выражения.
+    # 
+    # Метод iterate по очереди вызывает метод execute для каждого выражения.
+    # 
+    # Если во время выполнения выражения возникает ошибка, метод runtimeError класса Lox вызывается.
+    def interpret(statements)
+        # Попытка выполнить каждое выражение в массиве statements.
         begin
-            value = evaluate(expression)
-            $stdout << self.stringify(value) << "\n"
+            # Данный блок будет выполняться для каждого выражения в массиве statements.
+            statements.each do |statement| 
+                # Выполнить выражение statement.
+                self.execute(statement)
+            end
+        # Если во время выполнения выражения возникла ошибка типа RunTimeError,
+        # то выполнить следующий блок кода.
         rescue RunTimeError => error
+            # Вызвать метод runtimeError класса Lox с объектом ошибки error.
+            # Этот метод будет обработать ошибку во время выполнения.
             @lox.runtimeError(error)
         end
     end
@@ -86,11 +101,26 @@ class Interpreter < Expr::Visitor
         end
     end
 
+    def visitExpressionStmt(stmt)
+        self.evaluate(stmt.expression)
+        return nil
+    end
+
+    def visitPrintStmt(stmt)
+        value = self.evaluate(stmt.expression)
+        $stdout << self.stringify(value) << "\n"
+        return nil
+    end
+
     private
 
     # Метод evaluate вызывает visit для выражения и возвращает результат.
     def evaluate(expr)
         return expr.accept(self)
+    end
+
+    def execute(stmt)
+        stmt.accept(self)
     end
 
     # Метод isTruthy проверяет, является ли объект истинным или ложным значением.
@@ -134,6 +164,7 @@ class Interpreter < Expr::Visitor
         raise RunTimeError.new(operator, "Operand must be a number.")
     end
 end
+
 
 
 
