@@ -3,6 +3,11 @@ require_relative 'Stmt.rb'
 require_relative 'TokenType.rb'
 require_relative 'RunTimeError.rb'
 require_relative 'Environment.rb'
+require_relative 'LoxCallable.rb'
+require_relative 'LoxFunction.rb'
+require_relative 'Return.rb'
+require_relative 'Resolver.rb'
+require_relative 'LoxClass.rb'
 
 
 # Класс интерпретатора. Он реализует интерфейс Visitor, который определяет методы
@@ -10,21 +15,45 @@ require_relative 'Environment.rb'
 class Interpreter
     include Stmt
     include Expr
+    include ReturnModule
 
-    @@Environment = Environment.new()
-
-    def self.Environment
-        return @@Environment
-    end
-
-    private_class_method :Environment
+    attr_reader :globals    # Глобальное окружение.
+    attr_reader :Locals
 
     # Инициализация интерпретатора. 
     # Аргумент lox - объект класса Lox, который содержит метод для обработки ошибок.
     def initialize(lox)
         @lox = lox
+        @Locals = Hash.new()
+        @globals = Environment.new()
+        @@Environment = @globals  # Текущее окружение.
+        
+        # 
+        @globals.define("clock", Class.new(LoxCallable) do
+            # Метод clock возвращает текущее время в секундах.
+            def arity()
+                return 0 
+            end
+
+            def call(interpreter, arguments)
+                return Time.now.to_f * 1000
+            end
+
+            def self.to_s()
+                return "<native fn>"
+            end
+        end)
     end
 
+    def self.Environment
+        return @@Environment
+    end
+    private_class_method :Environment
+
+    def self.Locals
+        return @Locals
+    end
+    private_class_method :Locals
     # Метод interpret выполняет интерпретацию выражения.
     # 
     # Аргумент statements - массив объектов класса Stmt, представляющих
@@ -54,10 +83,23 @@ class Interpreter
      def visitAssignExpr(expr) 
         # Вычисление значения выражения
         value = self.evaluate(expr.value)
-        # Присвоение значения переменной
-        @@Environment.assign(expr.name, value)
+        
+        # мы ищем расстояние области действия переменной. 
+        # Если он не найден, мы предполагаем, что он глобальный, 
+        # и обрабатываем его так же, как и раньше. 
+        # В противном случае мы вызываем assignAt
+        distance = @Locals.key?(expr) ? @Locals.fetch(expr) : nil
+
+        if distance != nil then
+            @@Environment.assignAt(distance, expr.name, value)
+            # puts "set local var: #{expr.name.lexeme} = #{value}"
+        else
+            @globals.assign(expr.name, value)
+            # puts "set global var: #{expr.name.lexeme} = #{value}"
+        end
+
         return value
-    end
+    end 
 
     # Метод visitBinaryExpr принимает объект класса Expr::Binary и выполняет его.
     def visitBinaryExpr(expr)
@@ -95,6 +137,53 @@ class Interpreter
         end
     end
 
+    # Вычисляет выражение вызова, оценивая вызываемого объекта и аргументы и вызывая результирующую функцию с интерпретатором и аргументами.
+    def visitCallExpr(expr)
+        # Оцениваем вызываемый объект (может быть функция или класс).
+        callee = self.evaluate(expr.callee)
+        begin   
+            # Если это встроенная функция, то создаем ее экземпляр.
+            # Добавлено для того, чтобы функции, которые вызываются через интерпретатор,
+            # также работали.
+            instance = callee.new()
+            if callee.ancestors.include?(LoxCallable) then
+                callee = instance
+            end
+        rescue
+        ensure
+            # Оцениваем аргументы.
+            arguments = Array.new()
+            expr.arguments.each do |argument|
+                arguments << self.evaluate(argument)
+            end
+
+            # Проверяем, является ли выражение вызываемым объектом.
+            unless callee.is_a?(LoxCallable) then
+                raise RunTimeError.new(expr.paren, "Can only call functions and classes.")
+            end
+
+            function = callee
+
+            # Проверяем количество аргументов.
+            unless arguments.length == function.arity() then
+                raise RunTimeError.new(expr.paren, "Expected #{function.arity()} arguments, but got #{arguments.length}.")
+            end
+
+            # Вызываем функцию с интерпретатором и аргументами.
+            return function.call(self, arguments)
+        end
+    end
+
+    # Для вызова метода через точку
+    def visitGetExpr(expr)
+        object = self.evaluate(expr.object)
+        if object.is_a?(LoxInstance) then
+            return object.get(expr.name)
+        end
+
+        raise RunTimeError.new(expr.name, "Only instances have properties.")
+    end
+
     # Метод visitGroupingExpr принимает объект класса Expr::Grouping и вызывает evaluate для его выражения.
     def visitGroupingExpr(expr)
         return self.evaluate(expr.expression)
@@ -103,6 +192,34 @@ class Interpreter
     # Метод visitLiteralExpr принимает объект класса Expr::Literal и возвращает его значение.
     def visitLiteralExpr(expr)
         return expr.value;
+    end
+
+    # Метод visitLogicalExpr принимает объект класса Expr::Logical и выполняет его.
+    def visitLogicalExpr(expr)
+        left = self.evaluate(expr.left)
+
+        if expr.operator.type == TokenType::OR then
+            if self.isTruthy(left) then return left end
+        else
+            if !self.isTruthy(left) then return left end
+        end
+
+        return self.evaluate(expr.right)
+    end
+
+    def visitSetExpr(expr)
+        object = self.evaluate(expr.object)
+        # Мы оцениваем объект, свойство которого устанавливается, 
+        # и проверяем, является ли он LoxInstance. 
+        # Если нет, то это ошибка времени выполнения. 
+       
+        if !object.is_a?(LoxInstance) then
+            raise RunTimeError.new(expr.name, "Only instances have fields.")
+        end
+        # В противном случае мы оцениваем устанавливаемое значение и сохраняем его в экземпляре.
+        value = self.evaluate(expr.value)
+        object.set(expr.name, value)
+        return value
     end
 
     # Метод visitUnaryExpr принимает объект класса Expr::Unary и выполняет его.
@@ -119,15 +236,47 @@ class Interpreter
         return nil
     end
 
+    # Метод, который принимает Expr::Variable и передаёт методу lookUpVariable его имя.
     def visitVariableExpr(expr)
-        return @@Environment.get(expr.name)
+        return self.lookUpVariable(expr.name, expr)
     end
 
-# Метод visitExpressionStmt принимает объект класса Stmt::Expression и выполняет его выражение.
+    # Метод для посещения выражения переменной и поиска переменной в среде.
+    def lookUpVariable(name, expr)
+        # Сначала мы ищем разрешенное расстояние на хэше 
+        distance = @Locals.key?(expr) ? @Locals.fetch(expr) : nil
+        if distance != nil then
+            return @@Environment.getAt(distance, name.lexeme)
+        # если мы не находим расстояние на карте, оно должно быть глобальным. 
+        # В этом случае мы ищем его динамически, непосредственно в глобальной среде
+        else
+            return @globals.get(name)
+        end
+    end
+
+    # Метод visitExpressionStmt принимает объект класса Stmt::Expression и выполняет его выражение.
     def visitExpressionStmt(stmt)
         # Выполнение выражения
         self.evaluate(stmt.expression)
         return nil
+    end
+
+    # Выполняет оператор функции, создавая новую LoxFunction на основе предоставленного оператора, 
+    # определяет ее в среде и возвращает ноль.
+    def visitFunctionStmt(stmt)
+        function = LoxFunction.new(stmt, self, @@Environment)
+        @@Environment.define(stmt.name.lexeme, function)
+        return nil
+    end
+
+    # Метод visitIfStmt принимает объект класса Stmt::If и выполняет его.
+    def visitIfStmt(stmt)
+        if self.isTruthy(self.evaluate(stmt.condition)) then
+            self.execute(stmt.thenBranch)
+        elsif stmt.elseBranch != nil then
+            self.execute(stmt.elseBranch)
+        end
+        return nil 
     end
 
     # Метод visitBlockStmt принимает объект класса Stmt::Block и выполняет его, создавая
@@ -145,6 +294,23 @@ class Interpreter
         return nil
     end
 
+    # Метод visitClassStmt принимает объект класса Stmt::Class и создает новый класс,
+    # определяет его в текущей среде исполнения и присваивает его в данное пространство имен.
+    # После этого метод возвращает ноль.
+    def visitClass_defStmt(stmt)
+        # Определение класса в текущей среде исполнения
+        @@Environment.define(stmt.name.lexeme, nil)
+        
+        # Создание объекта класса
+        klass = LoxClass.new(stmt.name.lexeme)
+        
+        # Определение класса в текущем пространстве имен
+        @@Environment.assign(stmt.name, klass)
+        
+        # Возврат nil, так как класс не возвращает значение
+        return nil
+    end
+
     # Метод visitPrintStmt принимает объект класса Stmt::Print и выполняет его, выводя результат на стандартный вывод.
     def visitPrintStmt(stmt)
         # Вычисление значения выражения
@@ -152,6 +318,16 @@ class Interpreter
         # Печать значения на стандартный вывод
         $stdout << self.stringify(value) << "\n"
         return nil
+    end
+
+    def visitReturnStmt(stmt)
+        # Если у нас есть возвращаемое значение, мы оцениваем его, 
+        # в противном случае мы используем nil. 
+        # Затем мы берем это значение, помещаем его в собственный класс исключений и выбрасываем его.
+        value = nil
+        if stmt.value != nil then value = self.evaluate(stmt.value) end
+
+        raise ReturnModule::Return.new(value)
     end
 
     # Метод visitVarStmt принимает объект класса Stmt::Var и выполняет его, определяя переменную в среде исполнения.
@@ -164,6 +340,33 @@ class Interpreter
 
         # Определение переменной в текущей среде исполнения
         @@Environment.define(stmt.name.lexeme, value)
+        # puts "Defined variable: #{stmt.name.lexeme} = #{value.to_s}"
+        return nil
+    end
+
+    # Метод для обращения к оператору For, выполнения его инициализатора, за которым следует цикл, 
+    # который оценивает условие, выполняет тело и увеличивает (если присутствует) до тех пор,
+    #  пока условие не станет ложным.
+    def visitForStmt(stmt)  
+        if stmt.initializer != nil then
+            self.execute(stmt.initializer)
+        end
+
+        while self.isTruthy(self.evaluate(stmt.condition)) do
+            self.execute(stmt.body)
+            if stmt.increment != nil then
+                self.execute(stmt.increment)
+            end
+        end
+
+        return nil
+    end
+
+    # Метод visitWhileStmt принимает объект класса Stmt::While и выполняет его.
+    def visitWhileStmt(stmt)
+        while self.isTruthy(self.evaluate(stmt.condition)) do 
+            self.execute(stmt.body)
+        end
         return nil
     end
 
@@ -181,6 +384,16 @@ class Interpreter
         end
     end
 
+    # Кааждый раз, когда Resolver посещает переменную, он сообщает интерпретатору, 
+    # сколько областей существует между текущей областью и областью, в которой определена переменная. 
+    # Во время выполнения это точно соответствует количеству сред между текущим и окружающим, 
+    # в которых интерпретатор может найти значение переменной. 
+    # Resolver передает это число интерпретатору, вызывая это:
+    def resolve(expr, depth)
+        @Locals.store(expr, depth)
+        # puts "locals: #{@Locals}"
+    end
+
     private
 
     # Метод evaluate вызывает visit для выражения и возвращает результат.
@@ -188,14 +401,15 @@ class Interpreter
         return expr.accept(self)
     end
 
+    # Метод execute вызывает visit для утверждения и возвращает результат.
     def execute(stmt)
-        stmt.accept(self)
+        return stmt.accept(self)
     end
 
     # Метод isTruthy проверяет, является ли объект истинным или ложным значением.
     def isTruthy(object)
-        if object == nil then return false end
-        if object.is_a?(Bool) then return object end
+        return false if object.nil?
+        return object if object.is_a?(TrueClass) || object.is_a?(FalseClass)
         return true
     end
 
@@ -233,8 +447,5 @@ class Interpreter
         raise RunTimeError.new(operator, "Operand must be a number.")
     end
 end
-
-
-
 
 

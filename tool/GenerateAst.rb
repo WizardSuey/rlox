@@ -11,17 +11,27 @@ def main(*args)
     defineAst(outputDir, "Expr", [
         "Assign   : Token name, Expr value",
         "Binary   : Expr left, Token operator, Expr right",
+        "Call     : Expr callee, Token paren, Array(Expr) arguments",
+        "Get      : Expr object, Token name",
         "Grouping : Expr expression",
         "Literal  : Object value",  
+        "Logical  : Expr left, Token operator, Expr right",
+        "Set      : Expr object, Token name, Expr value",
         "Unary    : Token operator, Expr right",
         "Variable : Token name"
     ])
 
     defineAst(outputDir, "Stmt", [
         "Block      : Array(Stmt) statements",
+        "Class_def      : Token name, Array(StmtFunction) methods",
         "Expression : Expr expression",
+        "Function   : Token name, Array(Token) params, Array(Stmt) body",
+        "If         : Expr condition, Stmt thenBranch, Stmt elseBranch",
         "Print      : Expr expression",
+        "Return     : Token keyword, Expr value",
         "Var        : Token name, Expr initializer",
+        "For        : Expr initializer, Expr condition, Expr increment, Stmt body",
+        "While      : Expr condition, Stmt body"
     ])
 end
 

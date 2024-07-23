@@ -4,6 +4,7 @@ require_relative 'TokenType.rb'
 require_relative 'Token.rb'
 require_relative 'Expr.rb'
 require_relative 'Stmt.rb'
+require_relative 'Environment.rb'
 
 
 class Parser
@@ -43,6 +44,8 @@ class Parser
 
     def declaration()
         begin
+            if self.match(TokenType::CLASS) then return self.classDeclaration() end
+            if self.match(TokenType::FUN) then return self.function("function") end
             if self.match(TokenType::VAR) then return self.varDeclaration() end
             return self.statement()
         rescue ParseError => error
@@ -51,12 +54,100 @@ class Parser
         end
     end
 
-    # Парсит выражение.
+    def classDeclaration()
+        name = self.consume(TokenType::IDENTIFIER, "Expect class name.")
+        self.consume(TokenType::LEFT_BRACE, "Expect '{' before class body.")
+
+        methods = Array.new()
+        while (!self.check(TokenType::RIGHT_BRACE) && !self.isAtEnd?()) do
+            methods << self.function("method")
+        end
+
+        self.consume(TokenType::RIGHT_BRACE, "Expect '}' after class body.")
+
+        return Stmt::Class_def.new(name, methods)
+    end
+
+    # Анализирует утверждение.
+    # Анализирует различные типы операторов в зависимости от типа токена.
     def statement()
+        if self.match(TokenType::FOR) then return self.forStatement() end
+        if self.match(TokenType::IF) then return self.ifStatement() end
         if self.match(TokenType::PRINT) then return self.printStatement() end
-        if self.match(TokenType::LEFT_BRACE) then return Stmt::Block.new(self.block()) end
+        if self.match(TokenType::RETURN) then return self.returnStatement() end
+        if self.match(TokenType::WHILE) then return self.whileStatement() end 
+        if self.match(TokenType::LEFT_BRACE) then return self.block() end
 
         return self.expressionStatement()
+    end
+
+    # Парсит оператор for.
+    # Возвращает объект Stmt::For.
+    def forStatement()
+        # Ожидаем '(' после ключевого слова 'for'.
+        self.consume(TokenType::LEFT_PAREN, "Expected '(' after 'for'.")
+
+        # Инициализатор может быть переменной, выражением или пустым.
+        initializer = nil
+        if self.match(TokenType::SEMICOLON)
+            # Если после '(' нет ';', то инициализатор пустой.
+            initializer = nil
+        elsif self.match(TokenType::VAR)
+            # Если после '(' следует ключевое слово 'var', то инициализатор - объявление переменной.
+            initializer = self.varDeclaration()
+        else
+            # В противном случае инициализатор - выражение.
+            initializer = self.expressionStatement()
+        end
+
+        # Условие может быть пустым.
+        condition = nil
+        if !self.check(TokenType::SEMICOLON)
+            # Если после инициализатора нет ';', то условие - выражение.
+            condition = self.expression()
+        end
+        # Ожидаем ';' после условия.
+        self.consume(TokenType::SEMICOLON, "Expected ';' after loop condition.")
+
+        # Инкремент может быть пустым.
+        increment = nil
+        if !self.check(TokenType::RIGHT_PAREN)
+            # Если после условия нет ')', то инкремент - выражение.
+            increment = self.expression()
+        end
+
+        # Ожидаем ')' после инкремента.
+        self.consume(TokenType::RIGHT_PAREN, "Expected ')' after for clauses.")
+        
+        # Тело цикла - это состояние.
+        body = self.statement()
+
+        # Если условие пустое, то устанавливаем его в литерал 'true'.
+        if condition == nil
+            condition = Expr::Literal.new(true)
+        end
+
+        # Создаем новый объект класса Stmt::For, передавая в него параметры инициализатора, условия и инкремента, а также тело цикла.
+        body = Stmt::For.new(initializer, condition, increment, body)
+        
+        # Возвращаем тело цикла.
+        return body
+    end
+
+    # Анализирует оператор if.
+    # Возвращает объект Stmt::If.
+    def ifStatement()
+        self.consume(TokenType::LEFT_PAREN, "Expect '(' sfter 'if'.")
+        condition = self.expression()
+        self.consume(TokenType::RIGHT_PAREN, "Expect ')' after if condition.")
+
+        thenBranch = self.statement()
+        esleBranch = nil
+        if self.match(TokenType::ELSE)
+            elseBranch = self.statement()
+        end
+
+        return Stmt::If.new(condition, thenBranch, elseBranch)
     end
 
     # Парсит выражение для печати.
@@ -64,6 +155,23 @@ class Parser
         value = self.expression()
         self.consume(TokenType::SEMICOLON, "Expect ';' after variable value.")
         return Stmt::Print.new(value)
+    end
+
+    # Анализирует оператор возврата.
+    # Возвращает объект Stmt::Return, который представляет оператор возврата.
+    def returnStatement()
+        # Получаем предыдущий токен и сохраняем его в переменную keyword.
+        keyword = self.previous()
+        
+        value = nil
+    
+        if !self.check(TokenType::SEMICOLON) then
+            value = self.expression()
+        end
+        
+        self.consume(TokenType::SEMICOLON, "Expect ';' after return value.")
+        # Создаем новый объект класса Stmt::Return, передавая в него параметры keyword и value.
+        return Stmt::Return.new(keyword, value)
     end
 
      # Парсит объявление переменной.
@@ -79,11 +187,45 @@ class Parser
         return Stmt::Var.new(name, initializer)
     end
 
+    # Анализирует оператор while.
+    # Возвращает объект Stmt::While.
+    def whileStatement()
+        self.consume(TokenType::LEFT_PAREN, "Expect '(' after 'while'.")
+        condition = self.expression()
+        self.consume(TokenType::RIGHT_PAREN, "Expect ')' after condition.")
+        body = self.statement()
+
+        return Stmt::While.new(condition, body)
+    end
+
     # Парсит выражение для выражения.
     def expressionStatement()
         expr = self.expression()
         self.consume(TokenType::SEMICOLON,"Expect ';' after variable declaration.")
         return Stmt::Expression.new(expr)
+    end
+
+    # Парсит объявление функции.
+    def function(kind)
+        name = self.consume(TokenType::IDENTIFIER, "Expect #{kind} name.")
+        self.consume(TokenType::LEFT_PAREN, "Expect '(' after #{kind} name.")
+        parameters = Array.new()
+        if !self.check(TokenType::RIGHT_PAREN) then 
+            loop do 
+                if parameters.length >= 255 then
+                    self.error(self.peek(), "Can't have more than 255 parameters.")
+                end
+
+                parameters << self.consume(TokenType::IDENTIFIER, "Expect parameter name.")
+                break if !self.match(TokenType::COMMA)
+            end
+        end
+        self.consume(TokenType::RIGHT_PAREN, "Expect ')' after parameters.")
+
+        # Парсим тело функции
+        self.consume((TokenType::LEFT_BRACE), "Expect '{' before #{kind} body.")
+        body = self.block()
+        return Stmt::Function.new(name, parameters, body)
     end
 
     def block()
@@ -94,7 +236,7 @@ class Parser
         end
 
         self.consume(TokenType::RIGHT_BRACE, "Expect '}' after block.")
-        return statements
+        return Stmt::Block.new(statements)
     end
 
     # Парсит выражение присваивания.
@@ -110,8 +252,7 @@ class Parser
     # 
     # Возвращается исходное выражение или новое выражение присваивания.
     def assignment()
-        # Парсинг выражения равенства.
-        expr = self.equality()
+        expr = self.or()
 
         # Проверка наличия оператора присваивания (=).
         if self.match(TokenType::EQUAL) then
@@ -122,12 +263,16 @@ class Parser
             value = self.assignment()
 
             # Проверка, является ли исходное выражение переменной.
-            if (expr.is_a?(Expr::Variable)) then 
+            if expr.is_a?(Expr::Variable) then 
                 # Получение имени переменной.
                 name = expr.name
 
                 # Создание нового выражения присваивания.
                 return Expr::Assign.new(name, value)
+            # если исходное выражение является состояние. Н-р: plate.cost = 5
+            elsif expr.is_a?(Expr::Get) then
+                get = expr
+                return Expr::Set.new(get.object, get.name, value)
             end
 
             # Если исходное выражение не является переменной, вызывается метод error
@@ -136,6 +281,40 @@ class Parser
         end
 
         # Возвращается исходное выражение или новое выражение присваивания.
+        return expr
+    end
+
+    # Анализирует выражение OR.
+    #
+    # Этот метод начинается с анализа выражения AND с использованием метода and.
+    # Затем он входит в цикл, который продолжается до тех пор, пока текущий токен является оператором ИЛИ.
+    # Внутри цикла извлекается предыдущий токен (оператор ИЛИ),
+    # анализирует другое выражение AND, используя метод `and`,
+    # и создает новое логическое выражение с текущим выражением, оператором и анализируемым выражением.
+    # Этот процесс продолжается до тех пор, пока не останется операторов ИЛИ.
+    #
+    # Возвращает проанализированное выражение ИЛИ.
+    def or()
+        expr = self.and()
+        while self.match(TokenType::OR) do
+            operator = self.previous()
+            right = self.and()
+            expr = Expr::Logical.new(expr, operator, right)
+        end
+
+        return expr
+    end
+
+    # Парсит логическое выражение оператора AND.
+    def and()
+        expr = self.equality()
+
+        while self.match(TokenType::AND) do
+            operator = self.previous()
+            right = self.equality()
+            expr = Expr::Logical(expr, operator, right)
+        end
+
         return expr
     end
 
@@ -199,7 +378,44 @@ class Parser
             return Expr::Unary.new(operator, right)
         end
 
-        return self.primary()
+        return self.call()
+    end
+    
+    # Обработка функции
+    def finishCall(callee)
+        # Парсим аргументы функции.
+        arguments = Array.new()
+        if !self.check(TokenType::RIGHT_PAREN) then
+            loop do 
+                if arguments.length >= 255 then
+                    self.error(self.peek(), "Can't have more than 255 arguments.")
+                end
+                arguments << self.expression()
+                break if !self.match(TokenType::COMMA)
+            end
+        end
+
+        paren = self.consume(TokenType::RIGHT_PAREN, "Expect ')' after arguments.")
+
+        return Expr::Call.new(callee, paren, arguments)
+    end
+
+    # Парсит вызываемое выражение.
+    def call()
+        expr = self.primary()
+
+        while true do
+            if self.match(TokenType::LEFT_PAREN) then
+                expr = self.finishCall(expr)
+            elsif self.match(TokenType::DOT) then
+                name = self.consume(TokenType::IDENTIFIER, "Expect property name after '.'.")
+                expr = Expr::Get.new(expr, name)
+            else
+                break
+            end
+        end
+
+        return expr
     end
 
     # Парсит первичное выражение.
@@ -293,9 +509,16 @@ class Parser
                 when TokenType::CLASS, TokenType::FUN, TokenType::VAR, TokenType::FOR, TokenType::IF, TokenType::WHILE,  TokenType::PRINT, TokenType::RETURN then
                     return
                 end
-
             self.advance()
         end
     end
 end
+
+
+
+
+
+
+
+
 

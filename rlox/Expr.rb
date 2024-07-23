@@ -2,8 +2,12 @@ module Expr
     class Visitor
         def visitAssignExpr(expr) end
         def visitBinaryExpr(expr) end
+        def visitCallExpr(expr) end
+        def visitGetExpr(expr) end
         def visitGroupingExpr(expr) end
         def visitLiteralExpr(expr) end
+        def visitLogicalExpr(expr) end
+        def visitSetExpr(expr) end
         def visitUnaryExpr(expr) end
         def visitVariableExpr(expr) end
     end
@@ -36,6 +40,35 @@ module Expr
       visitor.visitBinaryExpr(self)
     end
   end
+  class Call
+     include Expr
+
+     attr_reader :callee, :paren, :arguments
+
+    def initialize(callee, paren, arguments)
+      @callee = callee
+      @paren = paren
+      @arguments = arguments
+    end
+
+    def accept(visitor)
+      visitor.visitCallExpr(self)
+    end
+  end
+  class Get
+     include Expr
+
+     attr_reader :object, :name
+
+    def initialize(object, name)
+      @object = object
+      @name = name
+    end
+
+    def accept(visitor)
+      visitor.visitGetExpr(self)
+    end
+  end
   class Grouping
      include Expr
 
@@ -60,6 +93,36 @@ module Expr
 
     def accept(visitor)
       visitor.visitLiteralExpr(self)
+    end
+  end
+  class Logical
+     include Expr
+
+     attr_reader :left, :operator, :right
+
+    def initialize(left, operator, right)
+      @left = left
+      @operator = operator
+      @right = right
+    end
+
+    def accept(visitor)
+      visitor.visitLogicalExpr(self)
+    end
+  end
+  class Set
+     include Expr
+
+     attr_reader :object, :name, :value
+
+    def initialize(object, name, value)
+      @object = object
+      @name = name
+      @value = value
+    end
+
+    def accept(visitor)
+      visitor.visitSetExpr(self)
     end
   end
   class Unary

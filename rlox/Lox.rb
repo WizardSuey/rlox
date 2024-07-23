@@ -5,6 +5,7 @@ require_relative 'parser.rb'
 require_relative 'AstPrinter.rb'
 require_relative 'Interpreter.rb'
 require_relative 'RunTimeError.rb'
+require_relative 'Resolver.rb'
 
 
 class Lox
@@ -67,14 +68,14 @@ class Lox
             if token.type == TokenType::EOF
                 report(token.line, " at end", message)
             else
-                report(token.line, " at '#{token.lexeme}'", message)
+                report(token.line, "at '#{token.lexeme}'", message)
             end
         end
     end
 
     def self.runtimeError(error)
         # Обрабатывает ошибку во время выполнения, печатая сообщение об ошибке вместе с номером строки, в которой произошла ошибка.
-        $stdout << "#{error.message}\n[line #{error.token.line}]" << "\n"
+        $stdout << "[line #{error.token.line}] #{error.message}\n"
         @@hadRuntimeError = true
     end
 
@@ -93,6 +94,11 @@ class Lox
         statements = parser.parse()
 
         # Остановиться, если произошла синтаксическая ошибка
+        if @@hadError then return end
+
+        resolver = Resolver.new(@@Interpreter, self)
+        resolver.resolve(statements)
+
         if @@hadError then return end
         
         @@Interpreter.interpret(statements)
