@@ -11,6 +11,16 @@ class Resolver
         NONE = :NONE
         # Функция
         FUNCTION = :FUNCTION
+        # Инициализатор
+        INITIALIZER = :INITIALIZER
+        # Метод
+        METHOD = :METHOD
+    end
+
+    module ClassType
+        NONE = :NONE
+        CLASS = :CLASS
+        SUBCLASS = :SUBCLASS
     end
 
     # Внутренние переменные
@@ -33,6 +43,11 @@ class Resolver
     end
     private_class_method :CurrentFunction
 
+    def self.CurrentClass()
+        return @CurrentClass
+    end
+    private_class_method :CurrentClass
+
     # Конструктор
     def initialize(interpreter, lox)
         # Массив для хранения областей видимости.
@@ -42,6 +57,7 @@ class Resolver
         @Interpreter = interpreter
         @lox = lox
         @CurrentFunction = FunctionType::NONE
+        @CurrentClass = ClassType::NONE
     end
 
     # Метод для посещения блока
@@ -162,6 +178,27 @@ class Resolver
         return nil
     end
 
+    def visitSuperExpr(expr)
+        if @CurrentClass == ClassType::NONE then
+            @lox.error(expr.keyword, "Can't use 'super' outside of a class.")
+        elsif @CurrentClass != ClassType::SUBCLASS then
+            @lox.error(expr.keyword, "Can't use 'super' in a class with no superclass.")
+        end
+
+        self.resolveLocal(expr, expr.keyword)
+        return nil
+    end
+
+    def visitThisExpr(expr)
+        if @CurrentClass == ClassType::NONE then
+            @lox.error(expr.keyword, "Can't use 'this' outside of a class.")
+            return nil
+        end
+
+        self.resolveLocal(expr, expr.keyword)
+        return nil
+    end
+
     # Метод для посещения унарного выражения
     def visitUnaryExpr(expr)
         # Разрешить правую часть
@@ -203,8 +240,46 @@ class Resolver
 
     # Метод для посещения класса
     def visitClass_defStmt(stmt)
+        enclosingClass = @CurrentClass
+        @CurrentClass = ClassType::CLASS
         self.declare(stmt.name)
         self.define(stmt.name)
+
+        if stmt.superclass != nil && stmt.name.lexeme.eql?(stmt.superclass.name.lexeme) then
+            @lox.error(stmt.superclass.name, "A class can't inherit from itself.")
+        end
+
+        if stmt.superclass != nil then
+            @CurrentClass = ClassType::SUBCLASS
+            self.resolve(stmt.superclass)
+        end
+
+        if stmt.superclass != nil then 
+            # Если объявление класса имеет суперкласс, мы создаем новую область видимости, окружающую все его методы. 
+            # В этой области мы определяем имя «супер». 
+            # Как только мы закончим разрешать методы класса, мы отбросим эту область видимости.
+            self.beginScope()
+            @Scopes.last.store("super", true)
+        end
+
+        self.beginScope()
+
+        @Scopes.last.store("this", true)
+
+        stmt.methods.each do |method|
+            declaration = FunctionType::METHOD
+            if method.name.lexeme.eql?("init") then
+                declaration = FunctionType::INITIALIZER
+            end
+            self.resolveFunction(method, declaration)
+        end
+
+        self.endScope()
+
+        if stmt.superclass != nil then self.endScope() end
+
+        @CurrentClass = enclosingClass
+
         return nil
     end
 
@@ -258,7 +333,12 @@ class Resolver
         end
 
         # Разрешить выражение, если оно присутствует
-        if stmt.value != nil then self.resolve(stmt.value) end
+        if stmt.value != nil then 
+            if @CurrentFunction == FunctionType::INITIALIZER then
+                @lox.error(stmt.keyword, "Can't return a value from an initializer.")
+            end
+            self.resolve(stmt.value) 
+        end
         return nil
     end
 
@@ -296,6 +376,8 @@ class Resolver
 
         # Завершить область видимости
         self.endScope()
+
+        @CurrentFunction = enclosingFunction
 
         # Разрешить тело
         # self.resolve(function.body)

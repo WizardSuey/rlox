@@ -8,6 +8,8 @@ module Expr
         def visitLiteralExpr(expr) end
         def visitLogicalExpr(expr) end
         def visitSetExpr(expr) end
+        def visitSuperExpr(expr) end
+        def visitThisExpr(expr) end
         def visitUnaryExpr(expr) end
         def visitVariableExpr(expr) end
     end
@@ -123,6 +125,33 @@ module Expr
 
     def accept(visitor)
       visitor.visitSetExpr(self)
+    end
+  end
+  class Super
+     include Expr
+
+     attr_reader :keyword, :method
+
+    def initialize(keyword, method)
+      @keyword = keyword
+      @method = method
+    end
+
+    def accept(visitor)
+      visitor.visitSuperExpr(self)
+    end
+  end
+  class This
+     include Expr
+
+     attr_reader :keyword
+
+    def initialize(keyword)
+      @keyword = keyword
+    end
+
+    def accept(visitor)
+      visitor.visitThisExpr(self)
     end
   end
   class Unary

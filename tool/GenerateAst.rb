@@ -17,13 +17,14 @@ def main(*args)
         "Literal  : Object value",  
         "Logical  : Expr left, Token operator, Expr right",
         "Set      : Expr object, Token name, Expr value",
+        "Super    : Token keyword, Token method",
+        "This     : Token keyword",
         "Unary    : Token operator, Expr right",
         "Variable : Token name"
     ])
-
     defineAst(outputDir, "Stmt", [
         "Block      : Array(Stmt) statements",
-        "Class_def      : Token name, Array(StmtFunction) methods",
+        "Class_def  : Token name, ExprVariable superclass, Array(StmtFunction) methods",
         "Expression : Expr expression",
         "Function   : Token name, Array(Token) params, Array(Stmt) body",
         "If         : Expr condition, Stmt thenBranch, Stmt elseBranch",

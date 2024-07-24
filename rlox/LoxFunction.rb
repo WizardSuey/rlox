@@ -5,7 +5,7 @@ require_relative 'Return.rb'
 
 class LoxFunction < LoxCallable
     include ReturnModule
-    attr_reader :Declaration, :Closure    # Декларация функции и окружение, в котором она была определена.
+    attr_reader :Declaration, :Closure, :IsInitializer    # Декларация функции и окружение, в котором она была определена.
 
     def self.Declaration()
         return @Declaration
@@ -17,10 +17,23 @@ class LoxFunction < LoxCallable
     end
     private_class_method :Closure
 
-    def initialize(declaration, interpreter, closure)
+    def self.IsInitializer()
+        return @IsInitializer
+    end
+    private_class_method :IsInitializer
+
+    def initialize(declaration, interpreter, closure, isInitializer)
         @Declaration = declaration
         @interpreter = interpreter
+        @IsInitializer = isInitializer
         @Closure = closure
+    end
+
+    # Метод bind привязывает функцию к объекту.
+    def bind(instance)
+        environment = Environment.new(@Closure)
+        environment.define("this", instance)
+        return LoxFunction.new(@Declaration, @interpreter, environment, @IsInitializer)
     end
 
     def arity()
@@ -44,8 +57,11 @@ class LoxFunction < LoxCallable
         rescue ReturnModule::Return => returnValue
             # Если возникло исключение Return, то возвращаем значение,
             # которое вернул оператор return.
+            if @IsInitializer then return @Closure.getAt(0, "this") end
             return returnValue.value
         end
+
+        if @IsInitializer then return @Closure.getAt(0, "this") end
 
         return nil
     end

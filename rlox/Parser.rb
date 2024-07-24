@@ -56,6 +56,13 @@ class Parser
 
     def classDeclaration()
         name = self.consume(TokenType::IDENTIFIER, "Expect class name.")
+
+        superclass = nil
+        if self.match(TokenType::LESS) then
+            self.consume(TokenType::IDENTIFIER, "Expect superclass name.")
+            superclass = Expr::Variable.new(self.previous())
+        end
+
         self.consume(TokenType::LEFT_BRACE, "Expect '{' before class body.")
 
         methods = Array.new()
@@ -65,7 +72,7 @@ class Parser
 
         self.consume(TokenType::RIGHT_BRACE, "Expect '}' after class body.")
 
-        return Stmt::Class_def.new(name, methods)
+        return Stmt::Class_def.new(name, superclass, methods)
     end
 
     # Анализирует утверждение.
@@ -426,6 +433,17 @@ class Parser
 
         if self.match(TokenType::NUMBER, TokenType::STRING) then
             return Expr::Literal.new(self.previous().literal)
+        end
+
+        if self.match(TokenType::SUPER) then
+            keyword = self.previous()
+            self.consume(TokenType::DOT, "Expect '.' after 'super'.")
+            method = self.consume(TokenType::IDENTIFIER, "Expect superclass method name.")
+            return Expr::Super.new(keyword, method)
+        end
+
+        if self.match(TokenType::THIS) then
+            return Expr::This.new(self.previous()) 
         end
 
         if self.match(TokenType::IDENTIFIER) then

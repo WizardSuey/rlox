@@ -222,6 +222,23 @@ class Interpreter
         return value
     end
 
+    def visitSuperExpr(expr)
+        distance = @Locals.fetch(expr)
+        superclass = @@Environment.getAt(distance, "super")
+        object = @@Environment.getAt(distance - 1, "this")
+
+        method = superclass.findMethod(expr.method.lexeme)
+
+        if method == nil then
+            raise RunTimeError.new(expr.method, "Undefined property '#{expr.method.lexeme}'.")
+        end
+        return method.bind(object)
+    end
+
+    def visitThisExpr(expr)
+        return self.lookUpVariable(expr.keyword, expr)
+    end
+
     # Метод visitUnaryExpr принимает объект класса Expr::Unary и выполняет его.
     def visitUnaryExpr(expr)
         right = self.evaluate(expr.right)
@@ -264,7 +281,7 @@ class Interpreter
     # Выполняет оператор функции, создавая новую LoxFunction на основе предоставленного оператора, 
     # определяет ее в среде и возвращает ноль.
     def visitFunctionStmt(stmt)
-        function = LoxFunction.new(stmt, self, @@Environment)
+        function = LoxFunction.new(stmt, self, @@Environment, false)
         @@Environment.define(stmt.name.lexeme, function)
         return nil
     end
@@ -298,11 +315,33 @@ class Interpreter
     # определяет его в текущей среде исполнения и присваивает его в данное пространство имен.
     # После этого метод возвращает ноль.
     def visitClass_defStmt(stmt)
+        superclass = nil
+        if stmt.superclass != nil then
+            superclass = self.evaluate(stmt.superclass)
+            if !superclass.is_a?(LoxClass) then
+                raise RunTimeError.new(stmt.superclass.name, "Superclass must be a class.")
+            end
+        end
         # Определение класса в текущей среде исполнения
         @@Environment.define(stmt.name.lexeme, nil)
-        
+
+        if stmt.superclass != nil then
+            @@Environment = Environment.new(@@Environment)
+            @@Environment.define("super", superclass)
+        end
+
+        methods = Hash.new()
+        stmt.methods.each do |method|
+            function = LoxFunction.new(method, self, @@Environment, method.name.lexeme.eql?("init"))
+            methods.store(method.name.lexeme, function)
+        end
+
         # Создание объекта класса
-        klass = LoxClass.new(stmt.name.lexeme)
+        klass = LoxClass.new(stmt.name.lexeme, superclass, methods)
+
+        if superclass != nil then 
+            @@Environment = @@Environment.Enclosing
+        end
         
         # Определение класса в текущем пространстве имен
         @@Environment.assign(stmt.name, klass)
